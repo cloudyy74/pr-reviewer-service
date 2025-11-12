@@ -7,9 +7,32 @@ services:
       - ./.env
     ports:
       - "5432:5432"
+    networks:
+      - pr-reviewer-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 10s
       retries: 3
       start_period: 20s
+  migrate:
+    image: migrate/migrate:4
+    container_name: pr-reviewer-migrate
+    env_file:
+      - ./.env
+    volumes:
+      - ./internal/data:/migrations
+    networks:
+      - pr-reviewer-net
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable",
+      "up"
+    ]
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  pr-reviewer-net:
+    driver: bridge
