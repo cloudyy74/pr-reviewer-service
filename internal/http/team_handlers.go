@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/cloudyy74/pr-reviewer-service/internal/models"
-	"github.com/cloudyy74/pr-reviewer-service/internal/storage"
+	"github.com/cloudyy74/pr-reviewer-service/internal/service"
 )
 
 const (
@@ -30,7 +30,7 @@ func (rtr *router) createTeam(w http.ResponseWriter, r *http.Request) {
 	createdTeam, err := rtr.teamService.CreateTeam(r.Context(), &team)
 	if err != nil {
 		switch {
-		case errors.Is(err, storage.ErrTeamExists):
+		case errors.Is(err, service.ErrTeamExists):
 			rtr.responseError(w, http.StatusBadRequest, ErrCodeTeamExists, "team_name already exists")
 		default:
 			rtr.responseError(w, http.StatusInternalServerError, ErrCodeInternal, "internal error")
