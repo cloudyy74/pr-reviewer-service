@@ -5,4 +5,5 @@ const (
 	ErrCodeInternal   = "INTERNAL"
 	ErrCodeValidation = "VALIDATION"
 	ErrCodeNotFound   = "NOT_FOUND"
+	ErrCodePRExists   = "PR_EXISTS"
 )

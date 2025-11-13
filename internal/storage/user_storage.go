@@ -100,3 +100,59 @@ func (s *UserStorage) SetUserActive(ctx context.Context, userID string, isActive
 
     return &u, nil
 }
+
+func (s *UserStorage) GetUserWithTeam(ctx context.Context, userID string) (*models.UserWithTeam, error) {
+	exec := getQueryExecer(ctx, s.db.DB)
+	var u models.UserWithTeam
+	err := exec.QueryRowContext(
+		ctx,
+		`select id, username, team_name, is_active from users where id = $1`,
+		userID,
+	).Scan(&u.ID, &u.Username, &u.TeamName, &u.IsActive)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("get user with team: %w", ErrUserNotFound)
+	}
+	if err != nil {
+		s.log.Error("failed to get user with team", slog.Any("error", err))
+		return nil, fmt.Errorf("get user with team: %w", err)
+	}
+	return &u, nil
+}
+
+func (s *UserStorage) GetActiveTeammates(ctx context.Context, teamName, excludeUserID string, limit int) ([]*models.User, error) {
+	if limit <= 0 {
+		return []*models.User{}, nil
+	}
+	exec := getQueryExecer(ctx, s.db.DB)
+	rows, err := exec.QueryContext(
+		ctx,
+		`
+select id, username, is_active
+from users
+where team_name = $1
+  and is_active
+  and id <> $2
+order by random()
+limit $3
+`,
+		teamName,
+		excludeUserID,
+		limit,
+	)
+	if err != nil {
+		s.log.Error("failed to get teammates", slog.Any("error", err))
+		return nil, fmt.Errorf("get teammates: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.IsActive); err != nil {
+			return nil, fmt.Errorf("scan teammate: %w", err)
+		}
+		users = append(users, &u)
+	}
+
+	return users, nil
+}

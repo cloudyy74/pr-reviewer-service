@@ -3,6 +3,8 @@ create table if not exists statuses (
     name varchar(64) unique not null
 );
 
+create index statuses_name_idx on statuses(name);
+
 create table if not exists pull_requests (
     id varchar(64) primary key not null,
     title varchar(256) not null,

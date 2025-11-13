@@ -48,6 +48,10 @@ func NewApp(cfg *config.Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user storage: %w", err)
 	}
+	prStorage, err := storage.NewPRStorage(database, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pr storage: %w", err)
+	}
 	txManager, err := storage.NewTxManager(database, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tx manager: %w", err)
@@ -61,6 +65,10 @@ func NewApp(cfg *config.Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user service: %w", err)
 	}
+	prService, err := service.NewPRService(txManager, prStorage, userStorage, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pr service: %w", err)
+	}
 
 	_, port, err := net.SplitHostPort(cfg.Addr)
 	if err != nil {
@@ -68,7 +76,7 @@ func NewApp(cfg *config.Config, log *slog.Logger) (*App, error) {
 	}
 
 	mux := http.NewServeMux()
-	if err := router.SetupRouter(mux, port, teamService, userService, log); err != nil {
+	if err := router.SetupRouter(mux, port, teamService, userService, prService, log); err != nil {
 		return nil, fmt.Errorf("failed to create router: %w", err)
 	}
 	httpServer := &http.Server{

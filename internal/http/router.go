@@ -12,6 +12,7 @@ import (
 type router struct {
 	teamService TeamService
 	userService UserService
+	prService   PRService
 	log         *slog.Logger
 }
 
@@ -20,6 +21,7 @@ func SetupRouter(
 	port string,
 	teamService TeamService,
 	userService UserService,
+	prService PRService,
 	log *slog.Logger,
 ) error {
 	if port == "" {
@@ -34,17 +36,23 @@ func SetupRouter(
 	if userService == nil {
 		return errors.New("user service cannot be nil")
 	}
+	if prService == nil {
+		return errors.New("pr service cannot be nil")
+	}
 	if log == nil {
 		return errors.New("logger cannot be nil")
 	}
 	r := router{
 		teamService: teamService,
 		userService: userService,
+		prService:   prService,
 		log:         log,
 	}
 	mux.HandleFunc("POST /team/add", r.createTeam)
 	mux.HandleFunc("GET /team/get", r.getTeam)
 	mux.HandleFunc("POST /users/setIsActive", r.setUserActive)
+	mux.HandleFunc("GET /users/getReview", r.getUserReviews)
+	mux.HandleFunc("POST /pullRequest/create", r.createPR)
 	return nil
 }
 
