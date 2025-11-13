@@ -1,0 +1,32 @@
+run:
+  timeout: 5m
+  tests: true
+
+output:
+  formats:
+    - format: colored-line-number
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - staticcheck
+    - gosimple
+    - errcheck
+    - ineffassign
+    - gosec
+    - goconst
+    - unused
+    - revive
+
+linters-settings:
+  goconst:
+    min-occurrences: 3
+  revive:
+    severity: warning
+    error-code: 1
+    warning-code: 1
