@@ -14,6 +14,7 @@ const (
 	ErrCodeTeamExists = "TEAM_EXISTS"
 	ErrCodeBadRequest = "BAD_REQUEST"
 	ErrCodeInternal   = "INTERNAL"
+	ErrCodeValidation = "VALIDATION"
 )
 
 type TeamService interface {
@@ -32,6 +33,8 @@ func (rtr *router) createTeam(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, service.ErrTeamExists):
 			rtr.responseError(w, http.StatusBadRequest, ErrCodeTeamExists, "team_name already exists")
+		case errors.Is(err, service.ErrValidation):
+			rtr.responseError(w, http.StatusBadRequest, ErrCodeValidation, errors.Unwrap(err).Error())
 		default:
 			rtr.responseError(w, http.StatusInternalServerError, ErrCodeInternal, "internal error")
 		}

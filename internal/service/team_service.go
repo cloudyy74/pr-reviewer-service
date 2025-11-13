@@ -20,12 +20,28 @@ type TeamRepository interface {
 	CreateTeam(ctx context.Context, teamName string) error
 }
 
+type UserRepository interface {
+	UpsertUser(ctx context.Context, u models.User, teamName string) error
+}
+
+type txManager interface {
+	Run(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 type TeamService struct {
+	tx    txManager
 	teams TeamRepository
+	users UserRepository
 	log   *slog.Logger
 }
 
-func NewTeamService(teams TeamRepository, log *slog.Logger) (*TeamService, error) {
+func NewTeamService(tx txManager, teams TeamRepository, users UserRepository, log *slog.Logger) (*TeamService, error) {
+	if tx == nil {
+		return nil, errors.New("tx manager cannot be nil")
+	}
+	if users == nil {
+		return nil, errors.New("users repository cannot be nil")
+	}
 	if teams == nil {
 		return nil, errors.New("teams repository cannot be nil")
 	}
@@ -33,6 +49,8 @@ func NewTeamService(teams TeamRepository, log *slog.Logger) (*TeamService, error
 		return nil, errors.New("logger cannot be nil")
 	}
 	return &TeamService{
+		tx:    tx,
+		users: users,
 		teams: teams,
 		log:   log,
 	}, nil
@@ -69,14 +87,25 @@ func (s *TeamService) CreateTeam(ctx context.Context, team *models.Team) (*model
 	}
 	team.Members = uniq
 
-	if err := s.teams.CreateTeam(ctx, team.Name); err != nil {
-		if errors.Is(err, storage.ErrTeamExists) {
-			return nil, ErrTeamExists
+	err := s.tx.Run(ctx, func(ctx context.Context) error {
+		if err := s.teams.CreateTeam(ctx, team.Name); err != nil {
+			if errors.Is(err, storage.ErrTeamExists) {
+				return ErrTeamExists
+			}
+			return fmt.Errorf("service create team: %w", err)
 		}
-		return nil, fmt.Errorf("service create team: %w", err)
-	}
 
-	// TODO: Members
+		for _, m := range team.Members {
+			if err := s.users.UpsertUser(ctx, *m, team.Name); err != nil {
+				return fmt.Errorf("service upsert user: %w", err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error in transcation: %w", err)
+	}
 
 	return team, nil
 }

@@ -42,9 +42,18 @@ func NewApp(cfg *config.Config, log *slog.Logger) (*App, error) {
 
 	teamStorage, err := storage.NewTeamStorage(database, log)
 	if err != nil {
-		return nil, fmt.Errorf("failed to team storage: %w", err)
+		return nil, fmt.Errorf("failed to create team storage: %w", err)
 	}
-	teamService, err := service.NewTeamService(teamStorage, log)
+	userStorage, err := storage.NewUserStorage(database, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user storage: %w", err)
+	}
+	txManager, err := storage.NewTxManager(database, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tx manager: %w", err)
+	}
+
+	teamService, err := service.NewTeamService(txManager, teamStorage, userStorage, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create team service: %w", err)
 	}
