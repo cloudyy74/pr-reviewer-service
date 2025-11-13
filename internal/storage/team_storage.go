@@ -32,7 +32,8 @@ func NewTeamStorage(db *postgres.Postgres, log *slog.Logger) (*TeamStorage, erro
 }
 
 func (s *TeamStorage) CreateTeam(ctx context.Context, teamName string) error {
-	res, err := s.db.DB.ExecContext(
+	exec := getExecer(ctx, s.db.DB)
+	res, err := exec.ExecContext(
 		ctx,
 		"insert into teams (name) values ($1) on conflict (name) do nothing",
 		teamName,
@@ -53,4 +54,22 @@ func (s *TeamStorage) CreateTeam(ctx context.Context, teamName string) error {
 	}
 
 	return nil
+}
+
+func (s *TeamStorage) ExistsTeam(ctx context.Context, name string) (bool, error) {
+	exec := getQueryExecer(ctx, s.db.DB)
+    var exists bool
+
+    err := exec.QueryRowContext(
+        ctx,
+        `SELECT EXISTS(
+            SELECT 1 FROM teams WHERE name = $1
+        )`,
+        name,
+    ).Scan(&exists)
+    if err != nil {
+        return false, fmt.Errorf("check team exists: %w", err)
+    }
+
+    return exists, nil
 }

@@ -12,30 +12,29 @@ import (
 )
 
 var (
-	ErrValidation = errors.New("validation error")
+	ErrTeamValidation = errors.New("validation error")
 	ErrTeamExists = errors.New("team already exists")
+	ErrTeamNotFound = errors.New("team not found")
 )
 
 type TeamRepository interface {
-	CreateTeam(ctx context.Context, teamName string) error
+	CreateTeam(context.Context, string) error
+	ExistsTeam(context.Context, string) (bool, error)
 }
 
-type UserRepository interface {
-	UpsertUser(ctx context.Context, u models.User, teamName string) error
-}
-
-type txManager interface {
-	Run(ctx context.Context, fn func(ctx context.Context) error) error
+type TeamUsersRepository interface {
+	UpsertUser(context.Context, models.User, string) error
+    GetUsersByTeam(context.Context, string) ([]*models.User, error)
 }
 
 type TeamService struct {
 	tx    txManager
 	teams TeamRepository
-	users UserRepository
+	users TeamUsersRepository
 	log   *slog.Logger
 }
 
-func NewTeamService(tx txManager, teams TeamRepository, users UserRepository, log *slog.Logger) (*TeamService, error) {
+func NewTeamService(tx txManager, teams TeamRepository, users TeamUsersRepository, log *slog.Logger) (*TeamService, error) {
 	if tx == nil {
 		return nil, errors.New("tx manager cannot be nil")
 	}
@@ -58,11 +57,11 @@ func NewTeamService(tx txManager, teams TeamRepository, users UserRepository, lo
 
 func (s *TeamService) CreateTeam(ctx context.Context, team *models.Team) (*models.Team, error) {
 	if team == nil {
-		return nil, fmt.Errorf("%w: empty body", ErrValidation)
+		return nil, fmt.Errorf("%w: empty body", ErrTeamValidation)
 	}
 	team.Name = strings.TrimSpace(team.Name)
 	if team.Name == "" {
-		return nil, fmt.Errorf("%w: team_name is required", ErrValidation)
+		return nil, fmt.Errorf("%w: team_name is required", ErrTeamValidation)
 	}
 
 	if team.Members == nil {
@@ -77,7 +76,7 @@ func (s *TeamService) CreateTeam(ctx context.Context, team *models.Team) (*model
 		m.ID = strings.TrimSpace(m.ID)
 		m.Username = strings.TrimSpace(m.Username)
 		if m.ID == "" || m.Username == "" {
-			return nil, fmt.Errorf("%w: member requires user_id and username", ErrValidation)
+			return nil, fmt.Errorf("%w: member requires user_id and username", ErrTeamValidation)
 		}
 		if _, ok := seen[m.ID]; ok {
 			continue
@@ -108,4 +107,26 @@ func (s *TeamService) CreateTeam(ctx context.Context, team *models.Team) (*model
 	}
 
 	return team, nil
+}
+
+func (s *TeamService) GetTeamUsers(ctx context.Context, teamName string) ([]*models.User, error) {
+	teamName = strings.TrimSpace(teamName)
+	if teamName == "" {
+		return nil, fmt.Errorf("%w: team_name is required", ErrTeamValidation)
+	}
+
+	exists, err := s.teams.ExistsTeam(ctx, teamName)
+	if err != nil {
+		return nil, fmt.Errorf("cant check is team exist: %w", err)
+	}
+	if !exists {
+		return nil, ErrTeamNotFound
+	}
+
+	users, err := s.users.GetUsersByTeam(ctx, teamName)
+	if err != nil {
+		return nil, fmt.Errorf("cant get users by team: %w", err)
+	}
+
+	return users, nil
 }

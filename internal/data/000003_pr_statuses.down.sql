@@ -1,2 +1,2 @@
 delete from statuses
-where name in ('open', 'merged');
+where name in ('OPEN', 'MERGED');

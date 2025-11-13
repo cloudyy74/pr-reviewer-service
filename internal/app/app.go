@@ -57,6 +57,10 @@ func NewApp(cfg *config.Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create team service: %w", err)
 	}
+	userService, err := service.NewUserService(txManager, userStorage, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user service: %w", err)
+	}
 
 	_, port, err := net.SplitHostPort(cfg.Addr)
 	if err != nil {
@@ -64,7 +68,7 @@ func NewApp(cfg *config.Config, log *slog.Logger) (*App, error) {
 	}
 
 	mux := http.NewServeMux()
-	if err := router.SetupRouter(mux, port, teamService, log); err != nil {
+	if err := router.SetupRouter(mux, port, teamService, userService, log); err != nil {
 		return nil, fmt.Errorf("failed to create router: %w", err)
 	}
 	httpServer := &http.Server{

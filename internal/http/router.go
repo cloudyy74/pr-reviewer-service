@@ -11,13 +11,15 @@ import (
 
 type router struct {
 	teamService TeamService
-	log *slog.Logger
+	userService UserService
+	log         *slog.Logger
 }
 
 func SetupRouter(
 	mux *http.ServeMux,
 	port string,
 	teamService TeamService,
+	userService UserService,
 	log *slog.Logger,
 ) error {
 	if port == "" {
@@ -29,24 +31,29 @@ func SetupRouter(
 	if teamService == nil {
 		return errors.New("team service cannot be nil")
 	}
+	if userService == nil {
+		return errors.New("user service cannot be nil")
+	}
 	if log == nil {
 		return errors.New("logger cannot be nil")
 	}
 	r := router{
-		teamService:  teamService,
-		log:          log,
+		teamService: teamService,
+		userService: userService,
+		log:         log,
 	}
 	mux.HandleFunc("POST /team/add", r.createTeam)
+	mux.HandleFunc("GET /team/get", r.getTeam)
+	mux.HandleFunc("POST /users/setIsActive", r.setUserActive)
 	return nil
 }
-
 
 func (rtr *router) responseError(w http.ResponseWriter, statusCode int, errorCode string, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	response := &models.ErrorResponse{
 		Error: models.Error{
-			Code: errorCode,
+			Code:    errorCode,
 			Message: message,
 		},
 	}
