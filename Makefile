@@ -9,3 +9,4 @@ lint:
 
 fmt:
 	go fmt ./...
+	goimports -w .
