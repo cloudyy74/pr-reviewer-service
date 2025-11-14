@@ -1,4 +1,21 @@
 services:
+  app:
+    container_name: pr-reviewer-service
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    ports:
+      - 8080:8080
+    networks:
+      - pr-reviewer-net
+    depends_on:
+        db:
+          condition: service_healthy
+        migrate:
+          condition: service_completed_successfully
   db:
     container_name: pr-reviewer-db
     image: postgres:17.5

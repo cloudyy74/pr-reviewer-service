@@ -1,6 +1,14 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
+# Docker
+docker-compose.yml
+Dockerfile
+.docker
+.dockerignore
+
+# Git
+.git
+.gitignore
+.gitattributes
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
@@ -23,9 +31,6 @@ profile.cov
 # Go workspace file
 go.work
 go.work.sum
-
-# env file
-.env
 
 # Editor/IDE
 .idea/
