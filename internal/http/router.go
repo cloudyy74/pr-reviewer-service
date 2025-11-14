@@ -53,6 +53,8 @@ func SetupRouter(
 	mux.HandleFunc("POST /users/setIsActive", r.setUserActive)
 	mux.HandleFunc("GET /users/getReview", r.getUserReviews)
 	mux.HandleFunc("POST /pullRequest/create", r.createPR)
+	mux.HandleFunc("POST /pullRequest/merge", r.mergePR)
+	mux.HandleFunc("POST /pullRequest/reassign", r.reassignPR)
 	return nil
 }
 

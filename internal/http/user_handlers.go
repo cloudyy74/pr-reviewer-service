@@ -21,7 +21,7 @@ func (rtr *router) setUserActive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := rtr.userService.SetUserActive(r.Context(), req.ID, req.IsActive) 
+	resp, err := rtr.userService.SetUserActive(r.Context(), req.ID, req.IsActive)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrUserNotFound):

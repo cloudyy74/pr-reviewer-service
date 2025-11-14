@@ -9,10 +9,10 @@ import (
 	"net/http"
 
 	"github.com/cloudyy74/pr-reviewer-service/internal/config"
+	router "github.com/cloudyy74/pr-reviewer-service/internal/http"
 	"github.com/cloudyy74/pr-reviewer-service/internal/service"
 	"github.com/cloudyy74/pr-reviewer-service/internal/storage"
 	"github.com/cloudyy74/pr-reviewer-service/pkg/postgres"
-	router "github.com/cloudyy74/pr-reviewer-service/internal/http"
 )
 
 const (
@@ -21,9 +21,9 @@ const (
 
 type App struct {
 	httpServer *http.Server
-	addr string
-	database *postgres.Postgres
-	log *slog.Logger
+	addr       string
+	database   *postgres.Postgres
+	log        *slog.Logger
 }
 
 func NewApp(cfg *config.Config, log *slog.Logger) (*App, error) {
@@ -80,13 +80,17 @@ func NewApp(cfg *config.Config, log *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("failed to create router: %w", err)
 	}
 	httpServer := &http.Server{
-		Addr:    cfg.Addr,
-		Handler: mux,
+		Addr:              cfg.Addr,
+		Handler:           mux,
+		ReadHeaderTimeout: cfg.HTTPServer.Timeout,
+		ReadTimeout:       cfg.HTTPServer.Timeout,
+		WriteTimeout:      cfg.HTTPServer.Timeout,
+		IdleTimeout:       cfg.HTTPServer.IdleTimeout,
 	}
 
 	return &App{
 		httpServer: httpServer,
-		addr:   cfg.Addr,
+		addr:       cfg.Addr,
 		database:   database,
 		log:        log,
 	}, nil

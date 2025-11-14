@@ -17,12 +17,12 @@ const (
 )
 
 type Postgres struct {
-	maxPoolSize int
-	connAttempts int
-	connTimeout time.Duration
+	maxPoolSize     int
+	connAttempts    int
+	connTimeout     time.Duration
 	connMaxLifetime time.Duration
 
-    DB *sql.DB
+	DB  *sql.DB
 	log *slog.Logger
 }
 
@@ -48,13 +48,13 @@ func New(ctx context.Context, dbURL string, log *slog.Logger, opts ...Option) (*
 				pg.DB.Close()
 				log.Error("failed to ping database", slog.Any("error", err))
 				return nil, err
-			}	
+			}
 
 			pg.DB.SetConnMaxLifetime(pg.connMaxLifetime)
 			pg.DB.SetMaxOpenConns(pg.maxPoolSize)
 			break
 		}
-		
+
 		pg.connAttempts--
 		log.Info("postgres is trying to connect", slog.Any("attempts left", pg.connAttempts))
 		time.Sleep(pg.connTimeout)

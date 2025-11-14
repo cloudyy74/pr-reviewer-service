@@ -13,8 +13,8 @@ import (
 
 var (
 	ErrTeamValidation = errors.New("validation error")
-	ErrTeamExists = errors.New("team already exists")
-	ErrTeamNotFound = errors.New("team not found")
+	ErrTeamExists     = errors.New("team already exists")
+	ErrTeamNotFound   = errors.New("team not found")
 )
 
 type TeamRepository interface {
@@ -24,7 +24,7 @@ type TeamRepository interface {
 
 type TeamUsersRepository interface {
 	UpsertUser(context.Context, models.User, string) error
-    GetUsersByTeam(context.Context, string) ([]*models.User, error)
+	GetUsersByTeam(context.Context, string) ([]*models.User, error)
 }
 
 type TeamService struct {

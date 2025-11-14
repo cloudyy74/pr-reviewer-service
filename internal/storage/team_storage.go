@@ -1,9 +1,9 @@
 package storage
 
 import (
-	"fmt"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/cloudyy74/pr-reviewer-service/pkg/postgres"
@@ -58,18 +58,18 @@ func (s *TeamStorage) CreateTeam(ctx context.Context, teamName string) error {
 
 func (s *TeamStorage) ExistsTeam(ctx context.Context, name string) (bool, error) {
 	exec := getQueryExecer(ctx, s.db.DB)
-    var exists bool
+	var exists bool
 
-    err := exec.QueryRowContext(
-        ctx,
-        `SELECT EXISTS(
-            SELECT 1 FROM teams WHERE name = $1
+	err := exec.QueryRowContext(
+		ctx,
+		`select exists(
+            select 1 from teams where name = $1
         )`,
-        name,
-    ).Scan(&exists)
-    if err != nil {
-        return false, fmt.Errorf("check team exists: %w", err)
-    }
+		name,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check team exists: %w", err)
+	}
 
-    return exists, nil
+	return exists, nil
 }

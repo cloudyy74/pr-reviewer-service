@@ -32,6 +32,20 @@ type PRResponse struct {
 }
 
 type UserReviewsResponse struct {
-	UserID        string               `json:"user_id"`
-	PullRequests []*PullRequestShort   `json:"pull_requests"`
+	UserID       string              `json:"user_id"`
+	PullRequests []*PullRequestShort `json:"pull_requests"`
+}
+
+type PRMergeRequest struct {
+	ID string `json:"pull_request_id"`
+}
+
+type PRReassignRequest struct {
+	ID            string `json:"pull_request_id"`
+	OldReviewerID string `json:"old_user_id"`
+}
+
+type PRReassignResponse struct {
+	PR         PullRequest `json:"pr"`
+	ReplacedBy string      `json:"replaced_by"`
 }

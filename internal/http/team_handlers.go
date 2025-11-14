@@ -10,10 +10,6 @@ import (
 	"github.com/cloudyy74/pr-reviewer-service/internal/service"
 )
 
-const (
-	ErrCodeTeamExists = "TEAM_EXISTS"
-)
-
 type TeamService interface {
 	CreateTeam(context.Context, *models.Team) (*models.Team, error)
 	GetTeamUsers(context.Context, string) ([]*models.User, error)
