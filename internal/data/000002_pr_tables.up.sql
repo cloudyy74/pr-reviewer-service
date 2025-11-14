@@ -3,8 +3,6 @@ create table if not exists statuses (
     name varchar(64) unique not null
 );
 
-create index statuses_name_idx on statuses(name);
-
 create table if not exists pull_requests (
     id varchar(64) primary key not null,
     title varchar(256) not null,
@@ -17,4 +15,7 @@ create table if not exists pull_requests_reviewers (
     pull_request_id varchar(64) not null references pull_requests(id) on delete cascade,
     user_id varchar(64) not null references users(id) on delete cascade,
     primary key (pull_request_id, user_id)
-);
+); 
+
+create index if not exists pull_requests_reviewers_user_id_idx
+    on pull_requests_reviewers(user_id, pull_request_id);
