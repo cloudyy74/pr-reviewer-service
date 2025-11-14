@@ -29,7 +29,7 @@ func (rtr *router) createPR(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrPRValidation):
-			rtr.responseError(w, http.StatusBadRequest, ErrCodeValidation, errors.Unwrap(err).Error())
+			rtr.responseError(w, http.StatusBadRequest, ErrCodeValidation, err.Error())
 		case errors.Is(err, service.ErrPRAuthorNotFound), errors.Is(err, service.ErrPRTeamNotFound):
 			rtr.responseError(w, http.StatusNotFound, ErrCodeNotFound, "resource not found")
 		case errors.Is(err, service.ErrPRAlreadyExists):

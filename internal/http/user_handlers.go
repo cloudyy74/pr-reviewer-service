@@ -27,7 +27,7 @@ func (rtr *router) setUserActive(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, service.ErrUserNotFound):
 			rtr.responseError(w, http.StatusNotFound, ErrCodeNotFound, "resource not found")
 		case errors.Is(err, service.ErrUserValidation):
-			rtr.responseError(w, http.StatusBadRequest, ErrCodeBadRequest, errors.Unwrap(err).Error())
+			rtr.responseError(w, http.StatusBadRequest, ErrCodeBadRequest, err.Error())
 		default:
 			rtr.responseError(w, http.StatusInternalServerError, ErrCodeInternal, err.Error())
 		}

@@ -28,7 +28,7 @@ func (rtr *router) createTeam(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, service.ErrTeamExists):
 			rtr.responseError(w, http.StatusBadRequest, ErrCodeTeamExists, "team_name already exists")
 		case errors.Is(err, service.ErrTeamValidation):
-			rtr.responseError(w, http.StatusBadRequest, ErrCodeValidation, errors.Unwrap(err).Error())
+			rtr.responseError(w, http.StatusBadRequest, ErrCodeValidation, err.Error())
 		default:
 			rtr.responseError(w, http.StatusInternalServerError, ErrCodeInternal, "internal error")
 		}
@@ -47,7 +47,7 @@ func (rtr *router) getTeam(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeamNotFound):
-			rtr.responseError(w, http.StatusBadRequest, ErrCodeNotFound, "resource not found")
+			rtr.responseError(w, http.StatusNotFound, ErrCodeNotFound, "resource not found")
 		case errors.Is(err, service.ErrTeamValidation):
 			rtr.responseError(w, http.StatusBadRequest, ErrCodeValidation, errors.Unwrap(err).Error())
 		default:
