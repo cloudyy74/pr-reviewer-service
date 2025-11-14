@@ -110,6 +110,7 @@ func (a *App) MustRun() {
 
 func (a *App) Close(ctx context.Context) {
 	a.database.Close()
+	a.log.Info("trying to shutdown server")
 	if err := a.httpServer.Shutdown(ctx); err != nil {
 		a.log.Warn("failed to close http server", slog.Any("error", err))
 	}
