@@ -11,9 +11,9 @@
 
 1. Создать `.env` файл с этими переменными (можно командой `make env`) и убедиться что они согласованы с использующемся конфигом в `./config/`
 ```dotenv
-POSTGRES_DB=pr-reviewer-db
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
+POSTGRES_DB=...
+POSTGRES_USER=...
+POSTGRES_PASSWORD=...
 ```
 
 2. Запуск контейнера с приложением и всем необходимым окружением:
