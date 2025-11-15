@@ -48,13 +48,13 @@ func SetupRouter(
 		prService:   prService,
 		log:         log,
 	}
-	mux.HandleFunc("POST /team/add", r.createTeam)
-	mux.HandleFunc("GET /team/get", r.getTeam)
-	mux.HandleFunc("POST /users/setIsActive", r.setUserActive)
-	mux.HandleFunc("GET /users/getReview", r.getUserReviews)
-	mux.HandleFunc("POST /pullRequest/create", r.createPR)
-	mux.HandleFunc("POST /pullRequest/merge", r.mergePR)
-	mux.HandleFunc("POST /pullRequest/reassign", r.reassignPR)
+	mux.HandleFunc("POST /team/add", r.panicMiddleware(r.createTeam))
+	mux.HandleFunc("GET /team/get", r.panicMiddleware(r.getTeam))
+	mux.HandleFunc("POST /users/setIsActive", r.panicMiddleware(r.setUserActive))
+	mux.HandleFunc("GET /users/getReview", r.panicMiddleware(r.getUserReviews))
+	mux.HandleFunc("POST /pullRequest/create", r.panicMiddleware(r.createPR))
+	mux.HandleFunc("POST /pullRequest/merge", r.panicMiddleware(r.mergePR))
+	mux.HandleFunc("POST /pullRequest/reassign", r.panicMiddleware(r.reassignPR))
 	return nil
 }
 
