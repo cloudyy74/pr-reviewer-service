@@ -3,6 +3,7 @@ module github.com/cloudyy74/pr-reviewer-service
 go 1.25.1
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/jackc/pgx/v5 v5.7.6
 	gopkg.in/yaml.v3 v3.0.1
 )
