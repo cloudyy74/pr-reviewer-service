@@ -22,6 +22,7 @@ type fakePRService struct {
 	reviewsFn  func(ctx context.Context, userID string) (*models.UserReviewsResponse, error)
 	mergeFn    func(ctx context.Context, req *models.PRMergeRequest) (*models.PullRequest, error)
 	reassignFn func(ctx context.Context, req *models.PRReassignRequest) (*models.PRReassignResponse, error)
+	statsFn    func(ctx context.Context) (*models.AssignmentsStatsResponse, error)
 }
 
 func (f *fakePRService) CreatePR(ctx context.Context, req *models.PRCreateRequest) (*models.PullRequest, error) {
@@ -50,6 +51,13 @@ func (f *fakePRService) ReassignReviewer(ctx context.Context, req *models.PRReas
 		return nil, errors.New("not implemented")
 	}
 	return f.reassignFn(ctx, req)
+}
+
+func (f *fakePRService) GetAssignmentsStats(ctx context.Context) (*models.AssignmentsStatsResponse, error) {
+	if f.statsFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return f.statsFn(ctx)
 }
 
 func newTestRouterWithPRService(svc PRService) *router {
@@ -538,10 +546,10 @@ func TestReassignPR_NotFoundCases(t *testing.T) {
 
 func TestReassignPR_ConflictCases(t *testing.T) {
 	tests := []struct {
-		err      error
-		code     int
-		errCode  string
-		message  string
+		err     error
+		code    int
+		errCode string
+		message string
 	}{
 		{err: service.ErrPRMerged, code: http.StatusConflict, errCode: ErrCodePRMerged, message: "cannot reassign on merged PR"},
 		{err: service.ErrReviewerNotAssigned, code: http.StatusConflict, errCode: ErrCodeNotAssigned, message: "reviewer is not assigned to this PR"},
@@ -593,5 +601,63 @@ func TestReassignPR_InternalError(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status 500, got %d", rec.Code)
+	}
+}
+
+func TestGetAssignmentsStats_Success(t *testing.T) {
+	want := &models.AssignmentsStatsResponse{
+		ByUser: []*models.UserAssignmentsStat{
+			{UserID: "u1", Assignments: 2},
+		},
+		ByPR: []*models.PRAssignmentsStat{
+			{PullRequestID: "pr1", Reviewers: 2},
+		},
+	}
+	svc := &fakePRService{
+		statsFn: func(context.Context) (*models.AssignmentsStatsResponse, error) {
+			return want, nil
+		},
+	}
+	rtr := newTestRouterWithPRService(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/stats/assignments", nil)
+	rec := httptest.NewRecorder()
+
+	rtr.getAssignmentsStats(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var resp models.AssignmentsStatsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.ByUser) != 1 || resp.ByUser[0].UserID != "u1" {
+		t.Fatalf("unexpected response: %#v", resp)
+	}
+}
+
+func TestGetAssignmentsStats_Error(t *testing.T) {
+	svc := &fakePRService{
+		statsFn: func(context.Context) (*models.AssignmentsStatsResponse, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	rtr := newTestRouterWithPRService(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/stats/assignments", nil)
+	rec := httptest.NewRecorder()
+
+	rtr.getAssignmentsStats(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status 500, got %d", rec.Code)
+	}
+	var resp models.ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if resp.Error.Code != ErrCodeInternal {
+		t.Fatalf("expected code %s, got %s", ErrCodeInternal, resp.Error.Code)
 	}
 }

@@ -42,8 +42,9 @@ func (f *fakeTeamsRepo) ExistsTeam(ctx context.Context, name string) (bool, erro
 }
 
 type fakeTeamUsersRepo struct {
-	upsertFn   func(context.Context, models.User, string) error
-	getUsersFn func(context.Context, string) ([]*models.User, error)
+	upsertFn     func(context.Context, models.User, string) error
+	getUsersFn   func(context.Context, string) ([]*models.User, error)
+	deactivateFn func(context.Context, string) (int64, error)
 }
 
 func (f *fakeTeamUsersRepo) UpsertUser(ctx context.Context, u models.User, teamName string) error {
@@ -58,6 +59,13 @@ func (f *fakeTeamUsersRepo) GetUsersByTeam(ctx context.Context, teamName string)
 		return f.getUsersFn(ctx, teamName)
 	}
 	return nil, nil
+}
+
+func (f *fakeTeamUsersRepo) DeactivateTeamUsers(ctx context.Context, teamName string) (int64, error) {
+	if f.deactivateFn != nil {
+		return f.deactivateFn(ctx, teamName)
+	}
+	return 0, nil
 }
 
 func teamTestLogger() *slog.Logger {
@@ -217,6 +225,78 @@ func TestTeamService_GetTeamUsers_NotFound(t *testing.T) {
 	_, err = service.GetTeamUsers(context.Background(), "backend")
 	if !errors.Is(err, ErrTeamNotFound) {
 		t.Fatalf("expected ErrTeamNotFound, got %v", err)
+	}
+}
+
+func TestTeamService_DeactivateTeamUsers_Success(t *testing.T) {
+	service, err := NewTeamService(
+		fakeTeamTx{},
+		&fakeTeamsRepo{
+			existsFn: func(context.Context, string) (bool, error) { return true, nil },
+		},
+		&fakeTeamUsersRepo{
+			deactivateFn: func(context.Context, string) (int64, error) { return 4, nil },
+		},
+		teamTestLogger(),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := service.DeactivateTeamUsers(context.Background(), " backend ")
+	if err != nil {
+		t.Fatalf("DeactivateTeamUsers error: %v", err)
+	}
+	if resp.TeamName != "backend" || resp.DeactivatedCount != 4 {
+		t.Fatalf("unexpected response: %#v", resp)
+	}
+}
+
+func TestTeamService_DeactivateTeamUsers_Validation(t *testing.T) {
+	service, err := NewTeamService(fakeTeamTx{}, &fakeTeamsRepo{}, &fakeTeamUsersRepo{}, teamTestLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_, err = service.DeactivateTeamUsers(context.Background(), " \t ")
+	if !errors.Is(err, ErrTeamValidation) {
+		t.Fatalf("expected ErrTeamValidation, got %v", err)
+	}
+}
+
+func TestTeamService_DeactivateTeamUsers_NotFound(t *testing.T) {
+	service, err := NewTeamService(
+		fakeTeamTx{},
+		&fakeTeamsRepo{
+			existsFn: func(context.Context, string) (bool, error) { return false, nil },
+		},
+		&fakeTeamUsersRepo{},
+		teamTestLogger(),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_, err = service.DeactivateTeamUsers(context.Background(), "backend")
+	if !errors.Is(err, ErrTeamNotFound) {
+		t.Fatalf("expected ErrTeamNotFound, got %v", err)
+	}
+}
+
+func TestTeamService_DeactivateTeamUsers_Error(t *testing.T) {
+	service, err := NewTeamService(
+		fakeTeamTx{},
+		&fakeTeamsRepo{
+			existsFn: func(context.Context, string) (bool, error) { return true, nil },
+		},
+		&fakeTeamUsersRepo{
+			deactivateFn: func(context.Context, string) (int64, error) { return 0, errors.New("db err") },
+		},
+		teamTestLogger(),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_, err = service.DeactivateTeamUsers(context.Background(), "backend")
+	if err == nil || errors.Is(err, ErrTeamNotFound) {
+		t.Fatalf("expected wrapped error, got %v", err)
 	}
 }
 

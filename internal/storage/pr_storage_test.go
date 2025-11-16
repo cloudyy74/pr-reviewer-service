@@ -40,20 +40,19 @@ func newPRStorage(t *testing.T) (*PRStorage, sqlmock.Sqlmock) {
 func TestPRStorage_CreatePR_Success(t *testing.T) {
 	st, mock := newPRStorage(t)
 	query := regexp.QuoteMeta(`
-        insert into pull_requests (id, title, author_id, status_id, need_more_reviewers)
-        values ($1, $2, $3, (select id from statuses where name = $4), $5)
-        returning id, title, author_id, $4 as status, need_more_reviewers`)
+        insert into pull_requests (id, title, author_id, status_id)
+        values ($1, $2, $3, (select id from statuses where name = $4))
+        returning id, title, author_id, $4 as status`)
 	mock.ExpectQuery(query).
-		WithArgs("pr1", "title", "author", models.StatusOpen, true).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "author_id", "status", "need_more_reviewers"}).
-			AddRow("pr1", "title", "author", models.StatusOpen, true))
+		WithArgs("pr1", "title", "author", models.StatusOpen).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "author_id", "status"}).
+			AddRow("pr1", "title", "author", models.StatusOpen))
 
 	pr, err := st.CreatePR(context.Background(), models.PullRequest{
-		ID:                "pr1",
-		Title:             "title",
-		AuthorID:          "author",
-		Status:            models.StatusOpen,
-		NeedMoreReviewers: true,
+		ID:       "pr1",
+		Title:    "title",
+		AuthorID: "author",
+		Status:   models.StatusOpen,
 	})
 	if err != nil {
 		t.Fatalf("CreatePR returned err: %v", err)
@@ -67,11 +66,11 @@ func TestPRStorage_CreatePR_Success(t *testing.T) {
 func TestPRStorage_CreatePR_UniqueViolation(t *testing.T) {
 	st, mock := newPRStorage(t)
 	query := regexp.QuoteMeta(`
-        insert into pull_requests (id, title, author_id, status_id, need_more_reviewers)
-        values ($1, $2, $3, (select id from statuses where name = $4), $5)
-        returning id, title, author_id, $4 as status, need_more_reviewers`)
+        insert into pull_requests (id, title, author_id, status_id)
+        values ($1, $2, $3, (select id from statuses where name = $4))
+        returning id, title, author_id, $4 as status`)
 	mock.ExpectQuery(query).
-		WithArgs("pr1", "title", "author", models.StatusOpen, false).
+		WithArgs("pr1", "title", "author", models.StatusOpen).
 		WillReturnError(&pgconn.PgError{Code: "23505"})
 
 	_, err := st.CreatePR(context.Background(), models.PullRequest{
@@ -128,18 +127,97 @@ order by pr.id
 	verifyExpectations(t, mock)
 }
 
+func TestPRStorage_GetAssignmentsStats_Success(t *testing.T) {
+	st, mock := newPRStorage(t)
+	userQuery := regexp.QuoteMeta(`
+select user_id, count(*) as assignments
+from pull_requests_reviewers
+group by user_id
+order by assignments desc, user_id
+`)
+	userRows := sqlmock.NewRows([]string{"user_id", "assignments"}).
+		AddRow("u1", 3).
+		AddRow("u2", 1)
+	mock.ExpectQuery(userQuery).WillReturnRows(userRows)
+
+	prQuery := regexp.QuoteMeta(`
+select pull_request_id, count(*) as reviewers
+from pull_requests_reviewers
+group by pull_request_id
+order by reviewers desc, pull_request_id
+`)
+	prRows := sqlmock.NewRows([]string{"pull_request_id", "reviewers"}).
+		AddRow("pr1", 2).
+		AddRow("pr2", 1)
+	mock.ExpectQuery(prQuery).WillReturnRows(prRows)
+
+	stats, err := st.GetAssignmentsStats(context.Background())
+	if err != nil {
+		t.Fatalf("GetAssignmentsStats returned err: %v", err)
+	}
+	if len(stats.ByUser) != 2 || stats.ByUser[0].UserID != "u1" {
+		t.Fatalf("unexpected user stats: %#v", stats.ByUser)
+	}
+	if len(stats.ByPR) != 2 || stats.ByPR[0].PullRequestID != "pr1" {
+		t.Fatalf("unexpected pr stats: %#v", stats.ByPR)
+	}
+	verifyExpectations(t, mock)
+}
+
+func TestPRStorage_GetAssignmentsStats_UserQueryError(t *testing.T) {
+	st, mock := newPRStorage(t)
+	userQuery := regexp.QuoteMeta(`
+select user_id, count(*) as assignments
+from pull_requests_reviewers
+group by user_id
+order by assignments desc, user_id
+`)
+	mock.ExpectQuery(userQuery).WillReturnError(errors.New("db error"))
+
+	_, err := st.GetAssignmentsStats(context.Background())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	verifyExpectations(t, mock)
+}
+
+func TestPRStorage_GetAssignmentsStats_PRQueryError(t *testing.T) {
+	st, mock := newPRStorage(t)
+	userQuery := regexp.QuoteMeta(`
+select user_id, count(*) as assignments
+from pull_requests_reviewers
+group by user_id
+order by assignments desc, user_id
+`)
+	mock.ExpectQuery(userQuery).WillReturnRows(sqlmock.NewRows([]string{"user_id", "assignments"}))
+
+	prQuery := regexp.QuoteMeta(`
+select pull_request_id, count(*) as reviewers
+from pull_requests_reviewers
+group by pull_request_id
+order by reviewers desc, pull_request_id
+`)
+	mock.ExpectQuery(prQuery).WillReturnError(errors.New("db error"))
+
+	_, err := st.GetAssignmentsStats(context.Background())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	verifyExpectations(t, mock)
+}
+
 func TestPRStorage_GetPR_Success(t *testing.T) {
 	st, mock := newPRStorage(t)
 	prQuery := regexp.QuoteMeta(`
-select pr.id, pr.title, pr.author_id, s.name, pr.need_more_reviewers
+select pr.id, pr.title, pr.author_id, s.name
 from pull_requests pr
     join statuses s on s.id = pr.status_id
 where pr.id = $1
 `)
 	mock.ExpectQuery(prQuery).
 		WithArgs("pr1").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "author_id", "status", "need_more_reviewers"}).
-			AddRow("pr1", "title", "author", models.StatusOpen, false))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "author_id", "status"}).
+			AddRow("pr1", "title", "author", models.StatusOpen))
 
 	reviewerRows := sqlmock.NewRows([]string{"user_id"}).AddRow("u1").AddRow("u2")
 	mock.ExpectQuery(regexp.QuoteMeta(`select user_id from pull_requests_reviewers where pull_request_id = $1 order by user_id`)).
@@ -159,7 +237,7 @@ where pr.id = $1
 func TestPRStorage_GetPR_NotFound(t *testing.T) {
 	st, mock := newPRStorage(t)
 	query := regexp.QuoteMeta(`
-select pr.id, pr.title, pr.author_id, s.name, pr.need_more_reviewers
+select pr.id, pr.title, pr.author_id, s.name
 from pull_requests pr
     join statuses s on s.id = pr.status_id
 where pr.id = $1
