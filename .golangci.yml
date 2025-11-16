@@ -3,8 +3,7 @@ run:
   tests: true
 
 output:
-  formats:
-    - format: colored-line-number
+  format: colored-line-number
 
 issues:
   max-issues-per-linter: 0
