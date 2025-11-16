@@ -82,10 +82,10 @@ func NewApp(cfg *config.Config, log *slog.Logger) (*App, error) {
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           mux,
-		ReadHeaderTimeout: cfg.HTTPServer.Timeout,
-		ReadTimeout:       cfg.HTTPServer.Timeout,
-		WriteTimeout:      cfg.HTTPServer.Timeout,
-		IdleTimeout:       cfg.HTTPServer.IdleTimeout,
+		ReadHeaderTimeout: cfg.Timeout,
+		ReadTimeout:       cfg.Timeout,
+		WriteTimeout:      cfg.Timeout,
+		IdleTimeout:       cfg.IdleTimeout,
 	}
 
 	return &App{
