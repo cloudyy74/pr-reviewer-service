@@ -17,8 +17,9 @@ import (
 )
 
 type fakeTeamService struct {
-	createFn func(ctx context.Context, team *models.Team) (*models.Team, error)
-	getFn    func(ctx context.Context, teamName string) ([]*models.User, error)
+	createFn     func(ctx context.Context, team *models.Team) (*models.Team, error)
+	getFn        func(ctx context.Context, teamName string) ([]*models.User, error)
+	deactivateFn func(ctx context.Context, teamName string) (*models.TeamDeactivateResponse, error)
 }
 
 func (f *fakeTeamService) CreateTeam(ctx context.Context, team *models.Team) (*models.Team, error) {
@@ -33,6 +34,13 @@ func (f *fakeTeamService) GetTeamUsers(ctx context.Context, teamName string) ([]
 		return nil, errors.New("not implemented")
 	}
 	return f.getFn(ctx, teamName)
+}
+
+func (f *fakeTeamService) DeactivateTeamUsers(ctx context.Context, teamName string) (*models.TeamDeactivateResponse, error) {
+	if f.deactivateFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return f.deactivateFn(ctx, teamName)
 }
 
 func newTestRouterWithTeamService(svc TeamService) *router {
@@ -285,8 +293,8 @@ func TestGetTeam_ValidationError(t *testing.T) {
 	if resp.Error.Code != ErrCodeValidation {
 		t.Fatalf("expected code %s, got %s", ErrCodeValidation, resp.Error.Code)
 	}
-	if resp.Error.Message != service.ErrTeamValidation.Error() {
-		t.Fatalf("expected message %s, got %s", service.ErrTeamValidation.Error(), resp.Error.Message)
+	if resp.Error.Message != valErr.Error() {
+		t.Fatalf("expected message %s, got %s", valErr.Error(), resp.Error.Message)
 	}
 }
 
@@ -315,5 +323,103 @@ func TestGetTeam_InternalError(t *testing.T) {
 	}
 	if resp.Error.Message != "internal error" {
 		t.Fatalf("unexpected message: %s", resp.Error.Message)
+	}
+}
+
+func TestDeactivateTeamUsers_Success(t *testing.T) {
+	respData := &models.TeamDeactivateResponse{TeamName: "backend", DeactivatedCount: 3}
+	svc := &fakeTeamService{
+		deactivateFn: func(context.Context, string) (*models.TeamDeactivateResponse, error) {
+			return respData, nil
+		},
+	}
+	rtr := newTestRouterWithTeamService(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewBufferString(`{"team_name":"backend"}`))
+	rec := httptest.NewRecorder()
+
+	rtr.deactivateTeamUsers(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var resp models.TeamDeactivateResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.DeactivatedCount != respData.DeactivatedCount || resp.TeamName != respData.TeamName {
+		t.Fatalf("unexpected response: %#v", resp)
+	}
+}
+
+func TestDeactivateTeamUsers_BadJSON(t *testing.T) {
+	svc := &fakeTeamService{
+		deactivateFn: func(context.Context, string) (*models.TeamDeactivateResponse, error) {
+			t.Fatalf("service should not be called")
+			return nil, nil
+		},
+	}
+	rtr := newTestRouterWithTeamService(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewBufferString("{bad json"))
+	rec := httptest.NewRecorder()
+
+	rtr.deactivateTeamUsers(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestDeactivateTeamUsers_Validation(t *testing.T) {
+	valErr := fmt.Errorf("%w: team_name is required", service.ErrTeamValidation)
+	svc := &fakeTeamService{
+		deactivateFn: func(context.Context, string) (*models.TeamDeactivateResponse, error) {
+			return nil, valErr
+		},
+	}
+	rtr := newTestRouterWithTeamService(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewBufferString(`{"team_name":""}`))
+	rec := httptest.NewRecorder()
+
+	rtr.deactivateTeamUsers(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestDeactivateTeamUsers_NotFound(t *testing.T) {
+	svc := &fakeTeamService{
+		deactivateFn: func(context.Context, string) (*models.TeamDeactivateResponse, error) {
+			return nil, service.ErrTeamNotFound
+		},
+	}
+	rtr := newTestRouterWithTeamService(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewBufferString(`{"team_name":"missing"}`))
+	rec := httptest.NewRecorder()
+
+	rtr.deactivateTeamUsers(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", rec.Code)
+	}
+}
+
+func TestDeactivateTeamUsers_Internal(t *testing.T) {
+	svc := &fakeTeamService{
+		deactivateFn: func(context.Context, string) (*models.TeamDeactivateResponse, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	rtr := newTestRouterWithTeamService(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewBufferString(`{"team_name":"backend"}`))
+	rec := httptest.NewRecorder()
+
+	rtr.deactivateTeamUsers(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status 500, got %d", rec.Code)
 	}
 }

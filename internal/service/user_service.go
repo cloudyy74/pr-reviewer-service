@@ -43,7 +43,7 @@ func NewUserService(tx txManager, users UserRepository, log *slog.Logger) (*User
 	}, nil
 }
 
-func (s *UserService) SetUserActive(ctx context.Context, userID string, isActive bool) (*models.UserWithTeam, error) {
+func (s *UserService) SetUserActive(ctx context.Context, userID string, isActive bool) (*models.UserResponse, error) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
 		return nil, fmt.Errorf("%w: user_id is required", ErrUserValidation)
@@ -55,9 +55,10 @@ func (s *UserService) SetUserActive(ctx context.Context, userID string, isActive
 		case errors.Is(err, storage.ErrUserNotFound):
 			return nil, fmt.Errorf("set user active: %w", ErrUserNotFound)
 		default:
+			s.log.Error("set user active failed", slog.Any("error", err), slog.String("user_id", userID))
 			return nil, fmt.Errorf("set user active: %w", err)
 		}
 	}
 
-	return u, nil
+	return &models.UserResponse{User: *u}, nil
 }

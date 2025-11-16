@@ -5,8 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-
-	"github.com/cloudyy74/pr-reviewer-service/internal/models"
 )
 
 type router struct {
@@ -48,28 +46,17 @@ func SetupRouter(
 		prService:   prService,
 		log:         log,
 	}
-	mux.HandleFunc("POST /team/add", r.panicMiddleware(r.createTeam))
-	mux.HandleFunc("GET /team/get", r.panicMiddleware(r.getTeam))
-	mux.HandleFunc("POST /users/setIsActive", r.panicMiddleware(r.setUserActive))
-	mux.HandleFunc("GET /users/getReview", r.panicMiddleware(r.getUserReviews))
-	mux.HandleFunc("POST /pullRequest/create", r.panicMiddleware(r.createPR))
-	mux.HandleFunc("POST /pullRequest/merge", r.panicMiddleware(r.mergePR))
-	mux.HandleFunc("POST /pullRequest/reassign", r.panicMiddleware(r.reassignPR))
+	mux.HandleFunc("GET /ping", r.panicMiddleware(r.loggingMiddleware(r.ping)))
+	mux.HandleFunc("POST /team/add", r.panicMiddleware(r.loggingMiddleware(r.createTeam)))
+	mux.HandleFunc("GET /team/get", r.panicMiddleware(r.loggingMiddleware(r.getTeam)))
+	mux.HandleFunc("POST /team/deactivate", r.panicMiddleware(r.loggingMiddleware(r.deactivateTeamUsers)))
+	mux.HandleFunc("POST /users/setIsActive", r.panicMiddleware(r.loggingMiddleware(r.setUserActive)))
+	mux.HandleFunc("GET /users/getReview", r.panicMiddleware(r.loggingMiddleware(r.getUserReviews)))
+	mux.HandleFunc("POST /pullRequest/create", r.panicMiddleware(r.loggingMiddleware(r.createPR)))
+	mux.HandleFunc("POST /pullRequest/merge", r.panicMiddleware(r.loggingMiddleware(r.mergePR)))
+	mux.HandleFunc("POST /pullRequest/reassign", r.panicMiddleware(r.loggingMiddleware(r.reassignPR)))
+	mux.HandleFunc("GET /stats/assignments", r.panicMiddleware(r.loggingMiddleware(r.getAssignmentsStats)))
 	return nil
-}
-
-func (rtr *router) responseError(w http.ResponseWriter, statusCode int, errorCode string, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	response := &models.ErrorResponse{
-		Error: models.Error{
-			Code:    errorCode,
-			Message: message,
-		},
-	}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		rtr.log.Error("failed to encode response", slog.Any("error", err))
-	}
 }
 
 func (rtr *router) responseJSON(w http.ResponseWriter, statusCode int, response any) {

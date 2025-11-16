@@ -70,6 +70,39 @@ func TestUserStorage_GetUsersByTeam(t *testing.T) {
 	verifyExpectations(t, mock)
 }
 
+func TestUserStorage_GetUsersByTeam_Empty(t *testing.T) {
+	st, mock := newUserStorage(t)
+	rows := sqlmock.NewRows([]string{"id", "username", "is_active"})
+	mock.ExpectQuery(regexp.QuoteMeta("select id, username, is_active from users")).
+		WithArgs("team").
+		WillReturnRows(rows)
+
+	users, err := st.GetUsersByTeam(context.Background(), "team")
+	if err != nil {
+		t.Fatalf("GetUsersByTeam returned err: %v", err)
+	}
+	if users == nil || len(users) != 0 {
+		t.Fatalf("expected empty slice, got %#v", users)
+	}
+	verifyExpectations(t, mock)
+}
+
+func TestUserStorage_DeactivateTeamUsers(t *testing.T) {
+	st, mock := newUserStorage(t)
+	mock.ExpectExec(regexp.QuoteMeta(`update users set is_active = false where team_name = $1 and is_active`)).
+		WithArgs("team").
+		WillReturnResult(sqlmock.NewResult(0, 3))
+
+	count, err := st.DeactivateTeamUsers(context.Background(), "team")
+	if err != nil {
+		t.Fatalf("DeactivateTeamUsers returned err: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("expected 3 affected rows, got %d", count)
+	}
+	verifyExpectations(t, mock)
+}
+
 func TestUserStorage_SetUserActive(t *testing.T) {
 	st, mock := newUserStorage(t)
 	query := regexp.QuoteMeta(`

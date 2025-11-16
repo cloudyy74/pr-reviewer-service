@@ -46,10 +46,14 @@ func TestUserService_SetUserActive_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	user, err := service.SetUserActive(context.Background(), " user-1 ", true)
+	userResp, err := service.SetUserActive(context.Background(), " user-1 ", true)
 	if err != nil {
 		t.Fatalf("SetUserActive returned error: %v", err)
 	}
+	if userResp == nil {
+		t.Fatalf("expected non-nil response")
+	}
+	user := userResp.User
 	if user.ID != "user-1" || !user.IsActive {
 		t.Fatalf("unexpected user returned: %#v", user)
 	}

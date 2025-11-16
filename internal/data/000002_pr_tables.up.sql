@@ -8,8 +8,11 @@ create table if not exists pull_requests (
     title varchar(256) not null,
     author_id varchar(64) not null references users(id) on delete cascade,
     status_id int not null references statuses(id),
-    need_more_reviewers boolean not null default false
+    merged_at timestamp with time zone
 );
+
+create index if not exists pull_requests_status_id_idx
+    on pull_requests(status_id);
 
 create table if not exists pull_requests_reviewers (
     pull_request_id varchar(64) not null references pull_requests(id) on delete cascade,

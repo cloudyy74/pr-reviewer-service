@@ -70,6 +70,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TeamMember'
+    TeamDeactivateRequest:
+      type: object
+      required: [team_name]
+      properties:
+        team_name:
+          type: string
+    TeamDeactivateResponse:
+      type: object
+      required: [team_name, deactivated_count]
+      properties:
+        team_name:
+          type: string
+        deactivated_count:
+          type: integer
+          minimum: 0
     User:
       type: object
       required: [ user_id, username, team_name, is_active ]
@@ -139,6 +154,14 @@ components:
         reviewers_count:
           type: integer
           minimum: 0
+    PingResponse:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+        message:
+          type: string
     AssignmentsStatsResponse:
       type: object
       required: [assignments_by_user, assignments_by_pr]
@@ -162,6 +185,17 @@ components:
             reviewers_count: 2
 
 paths:
+  /ping:
+    get:
+      tags: [Health]
+      summary: Простой health-check
+      responses:
+        '200':
+          description: Сервис отвечает
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
   /team/add:
     post:
       tags: [Teams]
@@ -239,6 +273,36 @@ paths:
         '404':
           description: Команда не найдена
 
+  /team/deactivate:
+    post:
+      tags: [Teams]
+      summary: Массово деактивировать всех пользователей команды
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamDeactivateRequest'
+            example:
+              team_name: backend
+      responses:
+        '200':
+          description: Количество деактивированных пользователей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamDeactivateResponse'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Команда не найдена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /stats/assignments:
     get:
       tags: [Stats]
@@ -295,8 +359,8 @@ paths:
                 user:
                   user_id: u2
                   username: Bob
-                  team_name: backend
                   is_active: false
+                  team_name: backend
         '404':
           description: Пользователь не найден
           content:
@@ -406,10 +470,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [ pull_request_id, old_user_id ]
+              required: [ pull_request_id, old_reviewer_id ]
               properties:
                 pull_request_id: { type: string }
-                old_user_id: { type: string }
+                old_reviewer_id: { type: string }
             example:
               pull_request_id: pr-1001
               old_reviewer_id: u2

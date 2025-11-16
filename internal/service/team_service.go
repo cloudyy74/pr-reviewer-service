@@ -25,6 +25,7 @@ type TeamRepository interface {
 type TeamUsersRepository interface {
 	UpsertUser(context.Context, models.User, string) error
 	GetUsersByTeam(context.Context, string) ([]*models.User, error)
+	DeactivateTeamUsers(context.Context, string) (int64, error)
 }
 
 type TeamService struct {
@@ -103,6 +104,7 @@ func (s *TeamService) CreateTeam(ctx context.Context, team *models.Team) (*model
 		return nil
 	})
 	if err != nil {
+		s.log.Error("create team transaction failed", slog.Any("error", err))
 		return nil, fmt.Errorf("error in transcation: %w", err)
 	}
 
@@ -117,6 +119,7 @@ func (s *TeamService) GetTeamUsers(ctx context.Context, teamName string) ([]*mod
 
 	exists, err := s.teams.ExistsTeam(ctx, teamName)
 	if err != nil {
+		s.log.Error("exists team check failed", slog.Any("error", err), slog.String("team", teamName))
 		return nil, fmt.Errorf("cant check is team exist: %w", err)
 	}
 	if !exists {
@@ -125,8 +128,48 @@ func (s *TeamService) GetTeamUsers(ctx context.Context, teamName string) ([]*mod
 
 	users, err := s.users.GetUsersByTeam(ctx, teamName)
 	if err != nil {
+		s.log.Error("get users by team failed", slog.Any("error", err), slog.String("team", teamName))
 		return nil, fmt.Errorf("cant get users by team: %w", err)
 	}
 
 	return users, nil
+}
+
+func (s *TeamService) DeactivateTeamUsers(ctx context.Context, teamName string) (*models.TeamDeactivateResponse, error) {
+	teamName = strings.TrimSpace(teamName)
+	if teamName == "" {
+		return nil, fmt.Errorf("%w: team_name is required", ErrTeamValidation)
+	}
+	var resp *models.TeamDeactivateResponse
+	err := s.tx.Run(ctx, func(ctx context.Context) error {
+		exists, err := s.teams.ExistsTeam(ctx, teamName)
+		if err != nil {
+			s.log.Error("exists team check failed", slog.Any("error", err), slog.String("team", teamName))
+			return fmt.Errorf("cant check is team exist: %w", err)
+		}
+		if !exists {
+			return ErrTeamNotFound
+		}
+		count, err := s.users.DeactivateTeamUsers(ctx, teamName)
+		if err != nil {
+			s.log.Error("deactivate team users failed", slog.Any("error", err), slog.String("team", teamName))
+			return fmt.Errorf("deactivate team users: %w", err)
+		}
+		resp = &models.TeamDeactivateResponse{
+			TeamName:         teamName,
+			DeactivatedCount: int(count),
+		}
+		return nil
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrTeamValidation), errors.Is(err, ErrTeamNotFound):
+			return nil, err
+		default:
+			s.log.Error("deactivate team transaction failed", slog.Any("error", err))
+			return nil, fmt.Errorf("error in transcation: %w", err)
+		}
+	}
+
+	return resp, nil
 }

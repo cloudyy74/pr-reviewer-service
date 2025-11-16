@@ -15,3 +15,7 @@ type SetActiveRequest struct {
 	ID       string `json:"user_id"`
 	IsActive bool   `json:"is_active"`
 }
+
+type UserResponse struct {
+	User UserWithTeam `json:"user"`
+}

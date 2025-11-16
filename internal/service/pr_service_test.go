@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/cloudyy74/pr-reviewer-service/internal/models"
 	"github.com/cloudyy74/pr-reviewer-service/internal/storage"
@@ -23,8 +24,9 @@ type fakePRRepo struct {
 	addReviewersFn    func(context.Context, string, []string) error
 	getReviewerPRsFn  func(context.Context, string) ([]*models.PullRequestShort, error)
 	getPRFn           func(context.Context, string) (*models.PullRequest, error)
-	updateStatusFn    func(context.Context, string, string) error
+	markMergedFn      func(context.Context, string, time.Time) error
 	replaceReviewerFn func(context.Context, string, string, string) error
+	getStatsFn        func(context.Context) (*models.AssignmentsStatsResponse, error)
 }
 
 func (f *fakePRRepo) CreatePR(ctx context.Context, pr models.PullRequest) (*models.PullRequest, error) {
@@ -43,12 +45,16 @@ func (f *fakePRRepo) GetPR(ctx context.Context, prID string) (*models.PullReques
 	return f.getPRFn(ctx, prID)
 }
 
-func (f *fakePRRepo) UpdatePRStatus(ctx context.Context, prID, status string) error {
-	return f.updateStatusFn(ctx, prID, status)
+func (f *fakePRRepo) MarkPRMerged(ctx context.Context, prID string, mergedAt time.Time) error {
+	return f.markMergedFn(ctx, prID, mergedAt)
 }
 
 func (f *fakePRRepo) ReplaceReviewer(ctx context.Context, prID, oldReviewerID, newReviewerID string) error {
 	return f.replaceReviewerFn(ctx, prID, oldReviewerID, newReviewerID)
+}
+
+func (f *fakePRRepo) GetAssignmentsStats(ctx context.Context) (*models.AssignmentsStatsResponse, error) {
+	return f.getStatsFn(ctx)
 }
 
 type fakePRUserRepo struct {
@@ -93,7 +99,6 @@ func TestPRService_CreatePR_Success(t *testing.T) {
 		},
 		getReviewerPRsFn:  nil,
 		getPRFn:           nil,
-		updateStatusFn:    nil,
 		replaceReviewerFn: nil,
 	}
 	userRepo := &fakePRUserRepo{
@@ -122,9 +127,6 @@ func TestPRService_CreatePR_Success(t *testing.T) {
 	}
 	if len(receivedReviewers) != 2 {
 		t.Fatalf("expected 2 reviewers, got %v", receivedReviewers)
-	}
-	if pr.NeedMoreReviewers {
-		t.Fatalf("did not expect NeedMoreReviewers to be true")
 	}
 }
 
@@ -170,13 +172,13 @@ func TestPRService_GetUserReviews_EmptyList(t *testing.T) {
 }
 
 func TestPRService_MergePR_Idempotent(t *testing.T) {
-	updateCalled := false
+	marked := false
 	repo := &fakePRRepo{
 		getPRFn: func(_ context.Context, _ string) (*models.PullRequest, error) {
 			return &models.PullRequest{ID: "pr", Status: models.StatusMerged}, nil
 		},
-		updateStatusFn: func(_ context.Context, _ string, _ string) error {
-			updateCalled = true
+		markMergedFn: func(_ context.Context, _ string, _ time.Time) error {
+			marked = true
 			return nil
 		},
 	}
@@ -192,15 +194,40 @@ func TestPRService_MergePR_Idempotent(t *testing.T) {
 	if pr.Status != models.StatusMerged {
 		t.Fatalf("expected status MERGED, got %s", pr.Status)
 	}
-	if updateCalled {
-		t.Fatalf("did not expect UpdatePRStatus to be called for already merged PR")
+	if marked {
+		t.Fatalf("did not expect MarkPRMerged to be called for already merged PR")
+	}
+}
+
+func TestPRService_MergePR_SetsTimestamp(t *testing.T) {
+	var captured time.Time
+	repo := &fakePRRepo{
+		getPRFn: func(_ context.Context, _ string) (*models.PullRequest, error) {
+			return &models.PullRequest{ID: "pr", Status: models.StatusOpen}, nil
+		},
+		markMergedFn: func(_ context.Context, _ string, mergedAt time.Time) error {
+			captured = mergedAt
+			return nil
+		},
+	}
+	userRepo := &fakePRUserRepo{}
+	service, err := NewPRService(fakeTxManager{}, repo, userRepo, testLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	pr, err := service.MergePR(context.Background(), &models.PRMergeRequest{ID: "pr"})
+	if err != nil {
+		t.Fatalf("MergePR returned error: %v", err)
+	}
+	if pr.MergedAt == nil || captured.IsZero() || !pr.MergedAt.Equal(captured) {
+		t.Fatalf("expected merged timestamp propagated")
 	}
 }
 
 func TestPRService_ReassignReviewer_Success(t *testing.T) {
 	repo := &fakePRRepo{
 		getPRFn: func(_ context.Context, _ string) (*models.PullRequest, error) {
-			return &models.PullRequest{ID: "pr", Status: models.StatusOpen, Reviewers: []string{"u2", "u3"}}, nil
+			return &models.PullRequest{ID: "pr", AuthorID: "author", Status: models.StatusOpen, Reviewers: []string{"u2", "u3"}}, nil
 		},
 		replaceReviewerFn: func(_ context.Context, _, oldID, newID string) error {
 			if oldID != "u2" || newID != "u4" {
@@ -230,6 +257,77 @@ func TestPRService_ReassignReviewer_Success(t *testing.T) {
 	}
 	if resp.PR.Reviewers[0] != "u4" {
 		t.Fatalf("expected reviewers to be updated, got %v", resp.PR.Reviewers)
+	}
+}
+
+func TestPRService_ReassignReviewer_ExcludesAuthor(t *testing.T) {
+	repo := &fakePRRepo{
+		getPRFn: func(_ context.Context, _ string) (*models.PullRequest, error) {
+			return &models.PullRequest{
+				ID:        "pr",
+				AuthorID:  "author-1",
+				Status:    models.StatusOpen,
+				Reviewers: []string{"u1"},
+			}, nil
+		},
+		replaceReviewerFn: func(context.Context, string, string, string) error { return nil },
+	}
+	userRepo := &fakePRUserRepo{
+		getUserFn: func(_ context.Context, _ string) (*models.UserWithTeam, error) {
+			return &models.UserWithTeam{TeamName: "backend"}, nil
+		},
+		getRandomMateFn: func(_ context.Context, _ string, exclude []string) (*models.User, error) {
+			for _, id := range exclude {
+				if id == "author-1" {
+					return &models.User{ID: "u2"}, nil
+				}
+			}
+			return nil, fmt.Errorf("author not in exclude list: %v", exclude)
+		},
+	}
+	service, err := NewPRService(fakeTxManager{}, repo, userRepo, testLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := service.ReassignReviewer(context.Background(), &models.PRReassignRequest{ID: "pr", OldReviewerID: "u1"}); err != nil {
+		t.Fatalf("ReassignReviewer returned error: %v", err)
+	}
+}
+
+func TestPRService_GetAssignmentsStats_Success(t *testing.T) {
+	repo := &fakePRRepo{
+		getStatsFn: func(context.Context) (*models.AssignmentsStatsResponse, error) {
+			return &models.AssignmentsStatsResponse{}, nil
+		},
+	}
+	userRepo := &fakePRUserRepo{}
+	service, err := NewPRService(fakeTxManager{}, repo, userRepo, testLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stats, err := service.GetAssignmentsStats(context.Background())
+	if err != nil {
+		t.Fatalf("GetAssignmentsStats returned error: %v", err)
+	}
+	if stats.ByUser == nil || stats.ByPR == nil {
+		t.Fatalf("expected slices to be initialized")
+	}
+}
+
+func TestPRService_GetAssignmentsStats_Error(t *testing.T) {
+	repo := &fakePRRepo{
+		getStatsFn: func(context.Context) (*models.AssignmentsStatsResponse, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	userRepo := &fakePRUserRepo{}
+	service, err := NewPRService(fakeTxManager{}, repo, userRepo, testLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_, err = service.GetAssignmentsStats(context.Background())
+	if err == nil {
+		t.Fatalf("expected error")
 	}
 }
 

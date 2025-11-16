@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -39,17 +40,18 @@ func newPRStorage(t *testing.T) (*PRStorage, sqlmock.Sqlmock) {
 
 func TestPRStorage_CreatePR_Success(t *testing.T) {
 	st, mock := newPRStorage(t)
+	const prID = "pr1"
 	query := regexp.QuoteMeta(`
         insert into pull_requests (id, title, author_id, status_id)
         values ($1, $2, $3, (select id from statuses where name = $4))
-        returning id, title, author_id, $4 as status`)
+        returning id, title, author_id, $4 as status, merged_at`)
 	mock.ExpectQuery(query).
-		WithArgs("pr1", "title", "author", models.StatusOpen).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "author_id", "status"}).
-			AddRow("pr1", "title", "author", models.StatusOpen))
+		WithArgs(prID, "title", "author", models.StatusOpen).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "author_id", "status", "merged_at"}).
+			AddRow(prID, "title", "author", models.StatusOpen, nil))
 
 	pr, err := st.CreatePR(context.Background(), models.PullRequest{
-		ID:       "pr1",
+		ID:       prID,
 		Title:    "title",
 		AuthorID: "author",
 		Status:   models.StatusOpen,
@@ -57,24 +59,28 @@ func TestPRStorage_CreatePR_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePR returned err: %v", err)
 	}
-	if pr == nil || pr.ID != "pr1" {
+	if pr == nil || pr.ID != prID {
 		t.Fatalf("unexpected PR: %#v", pr)
+	}
+	if pr.MergedAt != nil {
+		t.Fatalf("expected merged_at to be nil")
 	}
 	verifyExpectations(t, mock)
 }
 
 func TestPRStorage_CreatePR_UniqueViolation(t *testing.T) {
 	st, mock := newPRStorage(t)
+	const prID = "pr1"
 	query := regexp.QuoteMeta(`
         insert into pull_requests (id, title, author_id, status_id)
         values ($1, $2, $3, (select id from statuses where name = $4))
-        returning id, title, author_id, $4 as status`)
+        returning id, title, author_id, $4 as status, merged_at`)
 	mock.ExpectQuery(query).
-		WithArgs("pr1", "title", "author", models.StatusOpen).
+		WithArgs(prID, "title", "author", models.StatusOpen).
 		WillReturnError(&pgconn.PgError{Code: "23505"})
 
 	_, err := st.CreatePR(context.Background(), models.PullRequest{
-		ID:       "pr1",
+		ID:       prID,
 		Title:    "title",
 		AuthorID: "author",
 		Status:   models.StatusOpen,
@@ -209,15 +215,16 @@ order by reviewers desc, pull_request_id
 func TestPRStorage_GetPR_Success(t *testing.T) {
 	st, mock := newPRStorage(t)
 	prQuery := regexp.QuoteMeta(`
-select pr.id, pr.title, pr.author_id, s.name
+select pr.id, pr.title, pr.author_id, s.name, pr.merged_at
 from pull_requests pr
     join statuses s on s.id = pr.status_id
 where pr.id = $1
 `)
+	mergedAt := time.Now()
 	mock.ExpectQuery(prQuery).
 		WithArgs("pr1").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "author_id", "status"}).
-			AddRow("pr1", "title", "author", models.StatusOpen))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "author_id", "status", "merged_at"}).
+			AddRow("pr1", "title", "author", models.StatusOpen, mergedAt))
 
 	reviewerRows := sqlmock.NewRows([]string{"user_id"}).AddRow("u1").AddRow("u2")
 	mock.ExpectQuery(regexp.QuoteMeta(`select user_id from pull_requests_reviewers where pull_request_id = $1 order by user_id`)).
@@ -231,13 +238,16 @@ where pr.id = $1
 	if pr.Status != models.StatusOpen || len(pr.Reviewers) != 2 {
 		t.Fatalf("unexpected pr: %#v", pr)
 	}
+	if pr.MergedAt == nil || !pr.MergedAt.Equal(mergedAt) {
+		t.Fatalf("expected merged_at to be set")
+	}
 	verifyExpectations(t, mock)
 }
 
 func TestPRStorage_GetPR_NotFound(t *testing.T) {
 	st, mock := newPRStorage(t)
 	query := regexp.QuoteMeta(`
-select pr.id, pr.title, pr.author_id, s.name
+select pr.id, pr.title, pr.author_id, s.name, pr.merged_at
 from pull_requests pr
     join statuses s on s.id = pr.status_id
 where pr.id = $1
@@ -253,34 +263,35 @@ where pr.id = $1
 	verifyExpectations(t, mock)
 }
 
-func TestPRStorage_UpdatePRStatus(t *testing.T) {
+func TestPRStorage_MarkPRMerged(t *testing.T) {
 	st, mock := newPRStorage(t)
 	mock.ExpectExec(regexp.QuoteMeta(`
 update pull_requests
-set status_id = (select id from statuses where name = $2)
-where id = $1
-`)).
-		WithArgs("pr1", models.StatusMerged).
+set status_id = (select id from statuses where name = $2),
+    merged_at = $3
+where id = $1`)).
+		WithArgs("pr1", models.StatusMerged, sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	err := st.UpdatePRStatus(context.Background(), "pr1", models.StatusMerged)
+	err := st.MarkPRMerged(context.Background(), "pr1", time.Now())
 	if err != nil {
-		t.Fatalf("UpdatePRStatus returned err: %v", err)
+		t.Fatalf("MarkPRMerged returned err: %v", err)
 	}
 	verifyExpectations(t, mock)
 }
 
-func TestPRStorage_UpdatePRStatus_NotFound(t *testing.T) {
+func TestPRStorage_MarkPRMerged_NotFound(t *testing.T) {
 	st, mock := newPRStorage(t)
 	mock.ExpectExec(regexp.QuoteMeta(`
 update pull_requests
-set status_id = (select id from statuses where name = $2)
+set status_id = (select id from statuses where name = $2),
+    merged_at = $3
 where id = $1
 `)).
-		WithArgs("pr1", models.StatusMerged).
+		WithArgs("pr1", models.StatusMerged, sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
-	err := st.UpdatePRStatus(context.Background(), "pr1", models.StatusMerged)
+	err := st.MarkPRMerged(context.Background(), "pr1", time.Now())
 	if err == nil || !errors.Is(err, ErrPRNotFound) {
 		t.Fatalf("expected ErrPRNotFound, got %v", err)
 	}

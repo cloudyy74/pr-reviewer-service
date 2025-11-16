@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/cloudyy74/pr-reviewer-service/internal/models"
 	"github.com/cloudyy74/pr-reviewer-service/internal/storage"
@@ -30,8 +31,9 @@ type PRRepository interface {
 	AddReviewers(ctx context.Context, prID string, reviewerIDs []string) error
 	GetReviewerPRs(ctx context.Context, userID string) ([]*models.PullRequestShort, error)
 	GetPR(ctx context.Context, prID string) (*models.PullRequest, error)
-	UpdatePRStatus(ctx context.Context, prID, status string) error
+	MarkPRMerged(ctx context.Context, prID string, mergedAt time.Time) error
 	ReplaceReviewer(ctx context.Context, prID, oldReviewerID, newReviewerID string) error
+	GetAssignmentsStats(ctx context.Context) (*models.AssignmentsStatsResponse, error)
 }
 
 type PRUserRepository interface {
@@ -104,14 +106,11 @@ func (s *PRService) CreatePR(ctx context.Context, req *models.PRCreateRequest) (
 		for _, tm := range teammates {
 			reviewers = append(reviewers, tm.ID)
 		}
-		needMore := len(reviewers) < reviewersPerPR
-
 		pr := models.PullRequest{
-			ID:                prID,
-			Title:             title,
-			AuthorID:          author.ID,
-			Status:            models.StatusOpen,
-			NeedMoreReviewers: needMore,
+			ID:       prID,
+			Title:    title,
+			AuthorID: author.ID,
+			Status:   models.StatusOpen,
 		}
 		created, err := s.prs.CreatePR(ctx, pr)
 		if err != nil {
@@ -126,7 +125,6 @@ func (s *PRService) CreatePR(ctx context.Context, req *models.PRCreateRequest) (
 			return fmt.Errorf("add reviewers: %w", err)
 		}
 		created.Reviewers = reviewers
-		created.NeedMoreReviewers = needMore
 		createdPR = created
 		return nil
 	})
@@ -138,6 +136,7 @@ func (s *PRService) CreatePR(ctx context.Context, req *models.PRCreateRequest) (
 			errors.Is(err, ErrPRAlreadyExists):
 			return nil, err
 		default:
+			s.log.Error("create pr transaction failed", slog.Any("error", err))
 			return nil, fmt.Errorf("create pr transaction: %w", err)
 		}
 	}
@@ -155,12 +154,14 @@ func (s *PRService) GetUserReviews(ctx context.Context, userID string) (*models.
 		case errors.Is(err, storage.ErrUserNotFound):
 			return nil, ErrUserNotFound
 		default:
+			s.log.Error("get user info failed", slog.Any("error", err))
 			return nil, fmt.Errorf("get user: %w", err)
 		}
 	}
 
 	prs, err := s.prs.GetReviewerPRs(ctx, userID)
 	if err != nil {
+		s.log.Error("get reviewer prs failed", slog.Any("error", err), slog.String("user_id", userID))
 		return nil, fmt.Errorf("get user reviews: %w", err)
 	}
 	if prs == nil {
@@ -171,6 +172,23 @@ func (s *PRService) GetUserReviews(ctx context.Context, userID string) (*models.
 		UserID:       userID,
 		PullRequests: prs,
 	}, nil
+}
+
+func (s *PRService) GetAssignmentsStats(ctx context.Context) (*models.AssignmentsStatsResponse, error) {
+	stats, err := s.prs.GetAssignmentsStats(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get assignments stats: %w", err)
+	}
+	if stats == nil {
+		stats = &models.AssignmentsStatsResponse{}
+	}
+	if stats.ByUser == nil {
+		stats.ByUser = make([]*models.UserAssignmentsStat, 0)
+	}
+	if stats.ByPR == nil {
+		stats.ByPR = make([]*models.PRAssignmentsStat, 0)
+	}
+	return stats, nil
 }
 
 func (s *PRService) MergePR(ctx context.Context, req *models.PRMergeRequest) (*models.PullRequest, error) {
@@ -190,6 +208,7 @@ func (s *PRService) MergePR(ctx context.Context, req *models.PRMergeRequest) (*m
 			case errors.Is(err, storage.ErrPRNotFound):
 				return ErrPRNotFound
 			default:
+				s.log.Error("get pr failed", slog.Any("error", err), slog.String("pr_id", prID))
 				return fmt.Errorf("get pr: %w", err)
 			}
 		}
@@ -197,10 +216,13 @@ func (s *PRService) MergePR(ctx context.Context, req *models.PRMergeRequest) (*m
 			mergedPR = pr
 			return nil
 		}
-		if err := s.prs.UpdatePRStatus(ctx, prID, models.StatusMerged); err != nil {
-			return fmt.Errorf("update pr status: %w", err)
+		now := time.Now().UTC()
+		if err := s.prs.MarkPRMerged(ctx, prID, now); err != nil {
+			s.log.Error("mark pr merged failed", slog.Any("error", err), slog.String("pr_id", prID))
+			return fmt.Errorf("mark pr merged: %w", err)
 		}
 		pr.Status = models.StatusMerged
+		pr.MergedAt = &now
 		mergedPR = pr
 		return nil
 	})
@@ -225,7 +247,7 @@ func (s *PRService) ReassignReviewer(ctx context.Context, req *models.PRReassign
 		return nil, fmt.Errorf("%w: pull_request_id is required", ErrPRValidation)
 	}
 	if oldReviewerID == "" {
-		return nil, fmt.Errorf("%w: old_user_id is required", ErrPRValidation)
+		return nil, fmt.Errorf("%w: old_reviewer_id is required", ErrPRValidation)
 	}
 
 	var reassignResp *models.PRReassignResponse
@@ -236,6 +258,7 @@ func (s *PRService) ReassignReviewer(ctx context.Context, req *models.PRReassign
 			case errors.Is(err, storage.ErrPRNotFound):
 				return ErrPRNotFound
 			default:
+				s.log.Error("get pr failed", slog.Any("error", err), slog.String("pr_id", prID))
 				return fmt.Errorf("get pr: %w", err)
 			}
 		}
@@ -262,10 +285,14 @@ func (s *PRService) ReassignReviewer(ctx context.Context, req *models.PRReassign
 			return ErrPRTeamNotFound
 		}
 
-		excludeIDs := make(map[string]struct{}, len(pr.Reviewers)+1)
+		excludeIDs := make(map[string]struct{}, len(pr.Reviewers)+2)
 		excludeIDs[oldReviewerID] = struct{}{}
 		for _, reviewer := range pr.Reviewers {
 			excludeIDs[reviewer] = struct{}{}
+		}
+		authorID := strings.TrimSpace(pr.AuthorID)
+		if authorID != "" {
+			excludeIDs[authorID] = struct{}{}
 		}
 		excludeList := make([]string, 0, len(excludeIDs))
 		for id := range excludeIDs {
@@ -278,6 +305,7 @@ func (s *PRService) ReassignReviewer(ctx context.Context, req *models.PRReassign
 			case errors.Is(err, storage.ErrNoCandidate):
 				return ErrNoReplacement
 			default:
+				s.log.Error("get replacement failed", slog.Any("error", err), slog.String("team", teamName))
 				return fmt.Errorf("get replacement: %w", err)
 			}
 		}

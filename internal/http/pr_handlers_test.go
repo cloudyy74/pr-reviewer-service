@@ -462,7 +462,7 @@ func TestReassignPR_Success(t *testing.T) {
 	}
 	rtr := newTestRouterWithPRService(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewBufferString(`{"pull_request_id":"pr1","old_user_id":"u1"}`))
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewBufferString(`{"pull_request_id":"pr1","old_reviewer_id":"u1"}`))
 	rec := httptest.NewRecorder()
 
 	rtr.reassignPR(rec, req)
@@ -532,7 +532,7 @@ func TestReassignPR_NotFoundCases(t *testing.T) {
 			}
 			rtr := newTestRouterWithPRService(svc)
 
-			req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewBufferString(`{"pull_request_id":"pr1","old_user_id":"u1"}`))
+			req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewBufferString(`{"pull_request_id":"pr1","old_reviewer_id":"u1"}`))
 			rec := httptest.NewRecorder()
 
 			rtr.reassignPR(rec, req)
@@ -564,7 +564,7 @@ func TestReassignPR_ConflictCases(t *testing.T) {
 			}
 			rtr := newTestRouterWithPRService(svc)
 
-			req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewBufferString(`{"pull_request_id":"pr1","old_user_id":"u1"}`))
+			req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewBufferString(`{"pull_request_id":"pr1","old_reviewer_id":"u1"}`))
 			rec := httptest.NewRecorder()
 
 			rtr.reassignPR(rec, req)
@@ -594,7 +594,7 @@ func TestReassignPR_InternalError(t *testing.T) {
 	}
 	rtr := newTestRouterWithPRService(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewBufferString(`{"pull_request_id":"pr1","old_user_id":"u1"}`))
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewBufferString(`{"pull_request_id":"pr1","old_reviewer_id":"u1"}`))
 	rec := httptest.NewRecorder()
 
 	rtr.reassignPR(rec, req)

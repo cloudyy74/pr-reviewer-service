@@ -18,10 +18,10 @@ import (
 )
 
 type fakeUserService struct {
-	setFn func(ctx context.Context, userID string, isActive bool) (*models.UserWithTeam, error)
+	setFn func(ctx context.Context, userID string, isActive bool) (*models.UserResponse, error)
 }
 
-func (f *fakeUserService) SetUserActive(ctx context.Context, userID string, isActive bool) (*models.UserWithTeam, error) {
+func (f *fakeUserService) SetUserActive(ctx context.Context, userID string, isActive bool) (*models.UserResponse, error) {
 	if f.setFn == nil {
 		return nil, errors.New("not implemented")
 	}
@@ -46,7 +46,7 @@ func TestSetUserActive_Success(t *testing.T) {
 	}
 	called := false
 	svc := &fakeUserService{
-		setFn: func(ctx context.Context, userID string, isActive bool) (*models.UserWithTeam, error) {
+		setFn: func(ctx context.Context, userID string, isActive bool) (*models.UserResponse, error) {
 			called = true
 			if userID != "user-123" {
 				t.Fatalf("expected userID user-123, got %s", userID)
@@ -54,7 +54,7 @@ func TestSetUserActive_Success(t *testing.T) {
 			if !isActive {
 				t.Fatalf("expected isActive true")
 			}
-			return wantUser, nil
+			return &models.UserResponse{User: *wantUser}, nil
 		},
 	}
 	rtr := newTestRouterWithUserService(svc)
@@ -71,18 +71,18 @@ func TestSetUserActive_Success(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	var got models.UserWithTeam
+	var got models.UserResponse
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if got != *wantUser {
+	if got.User != *wantUser {
 		t.Fatalf("unexpected response: %+v", got)
 	}
 }
 
 func TestSetUserActive_BadJSON(t *testing.T) {
 	svc := &fakeUserService{
-		setFn: func(context.Context, string, bool) (*models.UserWithTeam, error) {
+		setFn: func(context.Context, string, bool) (*models.UserResponse, error) {
 			t.Fatalf("service should not be called")
 			return nil, nil
 		},
@@ -111,7 +111,7 @@ func TestSetUserActive_BadJSON(t *testing.T) {
 
 func TestSetUserActive_UserNotFound(t *testing.T) {
 	svc := &fakeUserService{
-		setFn: func(context.Context, string, bool) (*models.UserWithTeam, error) {
+		setFn: func(context.Context, string, bool) (*models.UserResponse, error) {
 			return nil, service.ErrUserNotFound
 		},
 	}
@@ -140,7 +140,7 @@ func TestSetUserActive_UserNotFound(t *testing.T) {
 func TestSetUserActive_ValidationError(t *testing.T) {
 	errValidation := fmt.Errorf("%w: user_id is required", service.ErrUserValidation)
 	svc := &fakeUserService{
-		setFn: func(context.Context, string, bool) (*models.UserWithTeam, error) {
+		setFn: func(context.Context, string, bool) (*models.UserResponse, error) {
 			return nil, errValidation
 		},
 	}
@@ -158,8 +158,8 @@ func TestSetUserActive_ValidationError(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("failed to decode error response: %v", err)
 	}
-	if resp.Error.Code != ErrCodeBadRequest {
-		t.Fatalf("expected code %s, got %s", ErrCodeBadRequest, resp.Error.Code)
+	if resp.Error.Code != ErrCodeValidation {
+		t.Fatalf("expected code %s, got %s", ErrCodeValidation, resp.Error.Code)
 	}
 	if resp.Error.Message != errValidation.Error() {
 		t.Fatalf("expected message %s, got %s", errValidation.Error(), resp.Error.Message)
@@ -169,7 +169,7 @@ func TestSetUserActive_ValidationError(t *testing.T) {
 func TestSetUserActive_InternalError(t *testing.T) {
 	internalErr := errors.New("db offline")
 	svc := &fakeUserService{
-		setFn: func(context.Context, string, bool) (*models.UserWithTeam, error) {
+		setFn: func(context.Context, string, bool) (*models.UserResponse, error) {
 			return nil, internalErr
 		},
 	}
@@ -190,7 +190,7 @@ func TestSetUserActive_InternalError(t *testing.T) {
 	if resp.Error.Code != ErrCodeInternal {
 		t.Fatalf("expected code %s, got %s", ErrCodeInternal, resp.Error.Code)
 	}
-	if resp.Error.Message != internalErr.Error() {
-		t.Fatalf("expected message %s, got %s", internalErr.Error(), resp.Error.Message)
+	if resp.Error.Message != "internal error" {
+		t.Fatalf("expected message internal error, got %s", resp.Error.Message)
 	}
 }

@@ -82,7 +82,29 @@ where team_name = $1
 		users = append(users, &u)
 	}
 
+	if users == nil {
+		users = make([]*models.User, 0)
+	}
+
 	return users, nil
+}
+
+func (s *UserStorage) DeactivateTeamUsers(ctx context.Context, teamName string) (int64, error) {
+	exec := getExecer(ctx, s.db.DB)
+	res, err := exec.ExecContext(
+		ctx,
+		`update users set is_active = false where team_name = $1 and is_active`,
+		teamName,
+	)
+	if err != nil {
+		s.log.Error("failed to deactivate team users", slog.Any("error", err), slog.String("team", teamName))
+		return 0, fmt.Errorf("deactivate team users: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("deactivate team users rows: %w", err)
+	}
+	return affected, nil
 }
 
 func (s *UserStorage) SetUserActive(ctx context.Context, userID string, isActive bool) (*models.UserWithTeam, error) {

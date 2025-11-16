@@ -1,0 +1,30 @@
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      TEST_DATABASE_URL: postgres://test:test@db-test:5432/pr_test?sslmode=disable
+    networks:
+      - pr-reviewer-test-net
+    depends_on:
+        db-test:
+          condition: service_healthy
+  db-test:
+    image: postgres:17.5
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: pr_test
+    networks:
+      - pr-reviewer-test-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d pr_test"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  pr-reviewer-test-net:
+    driver: bridge
