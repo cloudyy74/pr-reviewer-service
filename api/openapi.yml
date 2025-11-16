@@ -7,6 +7,7 @@ tags:
   - name: Teams
   - name: Users
   - name: PullRequests
+  - name: Stats
   - name: Health
 
 components:
@@ -120,6 +121,45 @@ components:
         status:
           type: string
           enum: [OPEN, MERGED]
+    UserAssignmentsStat:
+      type: object
+      required: [user_id, assignments_count]
+      properties:
+        user_id:
+          type: string
+        assignments_count:
+          type: integer
+          minimum: 0
+    PRAssignmentsStat:
+      type: object
+      required: [pull_request_id, reviewers_count]
+      properties:
+        pull_request_id:
+          type: string
+        reviewers_count:
+          type: integer
+          minimum: 0
+    AssignmentsStatsResponse:
+      type: object
+      required: [assignments_by_user, assignments_by_pr]
+      properties:
+        assignments_by_user:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserAssignmentsStat'
+        assignments_by_pr:
+          type: array
+          items:
+            $ref: '#/components/schemas/PRAssignmentsStat'
+      example:
+        assignments_by_user:
+          - user_id: u1
+            assignments_count: 3
+          - user_id: u2
+            assignments_count: 1
+        assignments_by_pr:
+          - pull_request_id: pr-1
+            reviewers_count: 2
 
 paths:
   /team/add:
@@ -198,9 +238,27 @@ paths:
                     is_active: true
         '404':
           description: Команда не найдена
+
+  /stats/assignments:
+    get:
+      tags: [Stats]
+      summary: Получить количество назначений по пользователям и PR
+      responses:
+        '200':
+          description: Статистика назначений
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentsStatsResponse'
+        '500':
+          description: Внутренняя ошибка
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                error:
+                  code: INTERNAL
+                  message: internal error
 
   /users/setIsActive:
     post:
@@ -244,12 +302,6 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '401':
-          description: Нет/неверный админский токен
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-
   /pullRequest/create:
     post:
       tags: [PullRequests]
